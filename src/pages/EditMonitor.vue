@@ -385,6 +385,24 @@
                                 </div>
                             </div>
 
+                            <!-- Kubernetes Cluster -->
+                            <!-- For Connection Type -->
+                            <div v-if="monitor.type === 'kubernetes'" class="my-3">
+                                <div class="mb-3">
+                                    <label for="kubernetes-cluster" class="form-label">{{ $t("Docker Host") }}</label>
+                                    <ActionSelect
+                                        id="docker-host"
+                                        v-model="monitor.docker_host"
+                                        :action-aria-label="$t('openModalTo', $t('Setup Docker Host'))"
+                                        :options="kubernetesClusterOptionsList"
+                                        :disabled="$root.kubernetesClusterList == null || $root.kubernetesClusterList.length === 0"
+                                        :icon="'plus'"
+                                        :action="() => $refs.kubernetesClusterDialog.show()"
+                                        :required="true"
+                                    />
+                                </div>
+                            </div>
+
                             <!-- MQTT -->
                             <!-- For MQTT Type -->
                             <template v-if="monitor.type === 'mqtt'">
@@ -995,6 +1013,7 @@
 
             <NotificationDialog ref="notificationDialog" @added="addedNotification" />
             <DockerHostDialog ref="dockerHostDialog" @added="addedDockerHost" />
+            <KubernetesClusterDialog ref="kubernetesClusterDialog" @added="addedKubernetesCluster" />
             <ProxyDialog ref="proxyDialog" @added="addedProxy" />
             <CreateGroupDialog ref="createGroupDialog" @added="addedDraftGroup" />
             <RemoteBrowserDialog ref="remoteBrowserDialog" />
@@ -1009,7 +1028,7 @@ import ActionSelect from "../components/ActionSelect.vue";
 import CopyableInput from "../components/CopyableInput.vue";
 import CreateGroupDialog from "../components/CreateGroupDialog.vue";
 import NotificationDialog from "../components/NotificationDialog.vue";
-import DockerHostDialog from "../components/DockerHostDialog.vue";
+import KubernetesClusterDialog from "../components/KubernetesClusterDialog.vue";
 import RemoteBrowserDialog from "../components/RemoteBrowserDialog.vue";
 import ProxyDialog from "../components/ProxyDialog.vue";
 import TagsManager from "../components/TagsManager.vue";
@@ -1073,6 +1092,7 @@ export default {
         CreateGroupDialog,
         NotificationDialog,
         DockerHostDialog,
+        KubernetesClusterDialog,
         RemoteBrowserDialog,
         TagsManager,
         VueMultiselect,
@@ -1328,6 +1348,22 @@ message HealthCheckResponse {
             } else {
                 return [{
                     label: this.$t("noDockerHostMsg"),
+                    value: null,
+                }];
+            }
+        },
+
+        kubernetesClusterOptionsList() {
+            if (this.$root.kubernetesClusterList && this.$root.kubernetesClusterList.length > 0) {
+                return this.$root.kubernetesClusterList.map((host) => {
+                    return {
+                        label: host.name,
+                        value: host.id
+                    };
+                });
+            } else {
+                return [{
+                    label: this.$t("noKubernetesClusterMsg"),
                     value: null,
                 }];
             }
@@ -1612,6 +1648,12 @@ message HealthCheckResponse {
                     return false;
                 }
             }
+            if (this.monitor.type === "kubernetes") {
+                if (this.monitor.kubernetes_cluster == null) {
+                    toast.error(this.$t("KubernetesClusterRequired"));
+                    return false;
+                }
+            }
             return true;
         },
 
@@ -1746,6 +1788,16 @@ message HealthCheckResponse {
          */
         addedDockerHost(id) {
             this.monitor.docker_host = id;
+        },
+
+        /**
+         * Added a Kubernetes Cluster Event
+         * Enable it if the Kubernetes Cluster is added in EditMonitor.vue
+         * @param {number} id ID of docker host
+         * @returns {void}
+         */
+        addedKubernetesCluster(id) {
+            this.monitor.kubernetes_cluster = id;
         },
 
         /**

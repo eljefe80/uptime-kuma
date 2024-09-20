@@ -47,6 +47,7 @@ export default {
             tlsInfoList: {},
             notificationList: [],
             dockerHostList: [],
+            kubernetesClusterList: [],
             remoteBrowserList: [],
             statusPageListLoaded: false,
             statusPageList: [],
@@ -188,6 +189,11 @@ export default {
             socket.on("dockerHostList", (data) => {
                 this.dockerHostList = data;
             });
+
+            socket.on("kubernetesClusterList", (data) => {
+                this.kubernetesClusterList = data;
+            });
+
 
             socket.on("remoteBrowserList", (data) => {
                 this.remoteBrowserList = data;

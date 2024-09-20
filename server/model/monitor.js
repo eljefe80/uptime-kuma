@@ -16,6 +16,7 @@ const version = require("../../package.json").version;
 const apicache = require("../modules/apicache");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const { DockerHost } = require("../docker");
+const { KubernetesCluster } = require("../kubernetes");
 const Gamedig = require("gamedig");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -758,6 +759,54 @@ class Monitor extends BeanModel {
                         options.baseURL = DockerHost.patchDockerURL(dockerHost._dockerDaemon);
                         options.httpsAgent = new https.Agent(
                             DockerHost.getHttpsAgentOptions(dockerHost._dockerType, options.baseURL)
+                        );
+                    }
+
+                    log.debug("monitor", `[${this.name}] Axios Request`);
+                    let res = await axios.request(options);
+
+                    if (res.data.State.Running) {
+                        if (res.data.State.Health && res.data.State.Health.Status !== "healthy") {
+                            bean.status = PENDING;
+                            bean.msg = res.data.State.Health.Status;
+                        } else {
+                            bean.status = UP;
+                            bean.msg = res.data.State.Health ? res.data.State.Health.Status : res.data.State.Status;
+                        }
+                    } else {
+                        throw Error("Container State is " + res.data.State.Status);
+                    }
+                } else if (this.type === "kubernetes") {
+                    log.debug("monitor", `[${this.name}] Prepare Options for Axios`);
+
+                    const options = {
+                        url: `/containers/${this.docker_container}/json`,
+                        timeout: this.interval * 1000 * 0.8,
+                        headers: {
+                            "Accept": "*/*",
+                        },
+                        httpsAgent: new https.Agent({
+                            maxCachedSessions: 0,      // Use Custom agent to disable session reuse (https://github.com/nodejs/node/issues/3940)
+                            rejectUnauthorized: !this.getIgnoreTls(),
+                            secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
+                        }),
+                        httpAgent: new http.Agent({
+                            maxCachedSessions: 0,
+                        }),
+                    };
+
+                    const kubernetesCluster = await R.load("kubernetes_cluster", this.kubernetes_cluster);
+
+                    if (!kubernetesCluster) {
+                        throw new Error("Failed to load kubernetes cluster config");
+                    }
+
+                    if (kubernetesCluster._dockerType === "socket") {
+                        options.socketPath = kubernetesCluster._dockerDaemon;
+                    } else if (kubernetesCluster._dockerType === "tcp") {
+                        options.baseURL = KubernetesCluster.patchDockerURL(kubernetesCluster._dockerDaemon);
+                        options.httpsAgent = new https.Agent(
+                            DockerHost.getHttpsAgentOptions(kubernetesCluster._dockerType, options.baseURL)
                         );
                     }
 

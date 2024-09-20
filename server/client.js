@@ -190,9 +190,33 @@ async function sendDockerHostList(socket) {
 }
 
 /**
+ * Send list of kubernetes clusters to client
+ * @param {Socket} socket Socket.io socket instance
+ * @returns {Promise<Bean[]>} List of kubernetes clusters
+ */
+ async function sendKubernetesClusterList(socket) {
+    const timeLogger = new TimeLogger();
+
+    let result = [];
+    let list = await R.find("kubernetes_cluster", " user_id = ? ", [
+        socket.userID,
+    ]);
+
+    for (let bean of list) {
+        result.push(bean.toJSON());
+    }
+
+    io.to(socket.userID).emit("kubernetesClusterList", result);
+
+    timeLogger.print("Send Kubernetes Cluster List");
+
+    return list;
+}
+
+/**
  * Send list of docker hosts to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of docker hosts
+ * @returns {Promise<Bean[]>} List of remotes
  */
 async function sendRemoteBrowserList(socket) {
     const timeLogger = new TimeLogger();
