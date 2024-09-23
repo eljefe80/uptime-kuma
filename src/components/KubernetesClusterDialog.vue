@@ -11,8 +11,8 @@
                     </div>
                     <div class="modal-body">
                         <div class="mb-3">
-                            <label for="kubernetes-cluster-name" class="form-label">{{ $t("Friendly Name") }}</label>
-                            <input id="kubernetes-cluster-name" v-model="kubernetesCluster.name" type="text" class="form-control" required>
+                            <label for="kubernetes-name" class="form-label">{{ $t("Friendly Name") }}</label>
+                            <input id="kubernetes-name" v-model="kubernetesCluster.name" type="text" class="form-control" required>
                         </div>
 
                         <div class="mb-3">
@@ -21,15 +21,30 @@
                                 <option v-for="type in connectionTypes" :key="type" :value="type">{{ $t(type) }}</option>
                             </select>
                         </div>
-
+<!---
                         <div class="mb-3">
-                            <label for="kubernetes-api-url" class="form-label">{{ $t("API URL") }}</label>
-                            <input id="kubernetes-api-url" v-model="kubernetesCluster.apiUrl" type="text" class="form-control" required>
+                            <label for="kubernetes-url" class="form-label">{{ $t("Kubernetes URL") }}</label>
+                            <input id="kubernetes-url" v-model="kubernetesCluster.kubernetesURL" type="text" class="form-control" optional>
 
                             <div class="form-text">
                                 {{ $t("Examples") }}:
                                 <ul>
-                                    <li>https://remote-host:6443 (TLS)</li>
+                                    <li>https://kubernetes:6443</li>
+                                </ul>
+                            </div>
+                        </div>
+--->
+                        <div class="mb-3">
+                            <label for="kubernetes-config" class="form-label">{{ $t("Kubernetes Config") }}</label>
+                            <textarea id="kubernetes-config" v-model="kubernetesCluster.kubeConfig" rows="5" class="form-control" optional></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="kubernetes-namespaces" class="form-label">{{ $t("Namespaces") }}</label>
+                            <input id="kubernetes-namespaces" v-model="kubernetesCluster.namespaces" type="text" class="form-control" optional>
+                            <div class="form-text">
+                                {{ $t("Namespace(s)") }}:
+                                <ul>
+                                    <li>/regex/ or comma-separated values; empty means all</li>
                                 </ul>
                             </div>
                         </div>
@@ -72,11 +87,13 @@ export default {
             modal: null,
             processing: false,
             id: null,
-            connectionTypes: [ "socket", "tcp" ],
+            connectionTypes: [ "local", "remote" ],
             kubernetesCluster: {
                 name: "",
-                apiUrl: "",
                 connectionType: "",
+                kubernetesURL: "",
+                kubeConfig: "",
+                namespaces: "",
                 // Do not set default value here, please scroll to show()
             }
         };
@@ -98,7 +115,7 @@ export default {
 
         /**
          * Show specified kubernetes cluster
-         * @param {number} kubernetesClusterID ID of cluster to show
+         * @param {number} kubernetesClusterID ID of host to show
          * @returns {void}
          */
         show(kubernetesClusterID) {
@@ -116,7 +133,7 @@ export default {
                 }
 
                 if (!found) {
-                    this.$root.toastError("Kubernetes Cluster not found!");
+                    this.$root.toastError("kubernetes cluster not found!");
                 }
 
             } else {
@@ -124,7 +141,9 @@ export default {
                 this.kubernetesCluster = {
                     name: "",
                     connectionType: "local",
-                    apiUrl: "",
+                    kubernetesURL: "",
+                    kubeConfig: "",
+                    namespaces: "",
                 };
             }
 

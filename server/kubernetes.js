@@ -4,8 +4,9 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const Database = require("./database");
-const { axiosAbortSignal } = require("./util-server");
-
+//const { axiosAbortSignal } = require("./util-server");
+const k8s = require('@kubernetes/client-node');
+const yaml = require('js-yaml');
 class KubernetesCluster {
 
     static CertificateFileNameCA = "ca.pem";
@@ -33,10 +34,14 @@ class KubernetesCluster {
             bean = R.dispense("kubernetes_cluster");
         }
 
+        console.log(kubernetesCluster.kubeConfig);
+        console.log(JSON.stringify(yaml.load(kubernetesCluster.kubeConfig)));
         bean.user_id = userID;
-        bean.docker_daemon = dockerHost.dockerDaemon;
-        bean.docker_type = dockerHost.dockerType;
-        bean.name = dockerHost.name;
+        bean.kubernetes_url = kubernetesCluster.kubernetesURL;
+        bean.kube_config = JSON.stringify(yaml.load(kubernetesCluster.kubeConfig));
+        bean.connection_type = kubernetesCluster.connectionType;
+        bean.name = kubernetesCluster.name;
+        bean.namespaces = kubernetesCluster.namespaces;
 
         await R.store(bean);
 
@@ -44,134 +49,84 @@ class KubernetesCluster {
     }
 
     /**
-     * Delete a Docker host
-     * @param {number} dockerHostID ID of the Docker host to delete
-     * @param {number} userID ID of the user who created the Docker host
+     * Delete a Kubernetes Cluster
+     * @param {number} kubernetesClusterID ID of the Kubernetes cluster to delete
+     * @param {number} userID ID of the user who created the Kubernetes cluster
      * @returns {Promise<void>}
      */
-    static async delete(dockerHostID, userID) {
-        let bean = await R.findOne("docker_host", " id = ? AND user_id = ? ", [ dockerHostID, userID ]);
+    static async delete(kubernetesClusterID, userID) {
+        let bean = await R.findOne("kubernetes_cluster", " id = ? AND user_id = ? ", [ kubernetesClusterID, userID ]);
 
         if (!bean) {
-            throw new Error("docker host not found");
+            throw new Error("kubernetes cluster not found");
         }
 
-        // Delete removed proxy from monitors if exists
-        await R.exec("UPDATE monitor SET docker_host = null WHERE docker_host = ?", [ dockerHostID ]);
+        // Delete removed kubernetes_cluster from monitors if exists
+        await R.exec("UPDATE monitor SET kubernetes_cluster = null WHERE kubernetes_cluster = ?", [ kubernetesClusterID ]);
 
         await R.trash(bean);
     }
 
     /**
-     * Fetches the amount of containers on the Docker host
-     * @param {object} dockerHost Docker host to check for
+     * Fetches the amount of pods on the Kubernetes Cluster
+     * @param {object} Kubernetes cluster to check for
      * @returns {Promise<number>} Total amount of containers on the host
      */
-    static async testDockerHost(dockerHost) {
-        const options = {
-            url: "/containers/json?all=true",
-            timeout: 5000,
-            headers: {
-                "Accept": "*/*",
-            },
-            signal: axiosAbortSignal(6000),
-        };
+    static async testKubernetesCluster(kubernetesCluster) {
+        let config;
 
-        if (dockerHost.dockerType === "socket") {
-            options.socketPath = dockerHost.dockerDaemon;
-        } else if (dockerHost.dockerType === "tcp") {
-            options.baseURL = DockerHost.patchDockerURL(dockerHost.dockerDaemon);
-            options.httpsAgent = new https.Agent(DockerHost.getHttpsAgentOptions(dockerHost.dockerType, options.baseURL));
-        }
+        const kc = new k8s.KubeConfig();
 
-        try {
-            let res = await axios.request(options);
-
-            if (Array.isArray(res.data)) {
-
-                if (res.data.length > 1) {
-
-                    if ("ImageID" in res.data[0]) {
-                        return res.data.length;
-                    } else {
-                        throw new Error("Invalid Docker response, is it Docker really a daemon?");
-                    }
-
-                } else {
-                    return res.data.length;
-                }
-
-            } else {
-                throw new Error("Invalid Docker response, is it Docker really a daemon?");
-            }
-        } catch (e) {
-            if (e.code === "ECONNABORTED" || e.name === "CanceledError") {
-                throw new Error("Connection to Docker daemon timed out.");
-            } else {
-                throw e;
-            }
-        }
-    }
-
-    /**
-     * Since axios 0.27.X, it does not accept `tcp://` protocol.
-     * Change it to `http://` on the fly in order to fix it. (https://github.com/louislam/uptime-kuma/issues/2165)
-     * @param {any} url URL to fix
-     * @returns {any} URL with tcp:// replaced by http://
-     */
-    static patchDockerURL(url) {
-        if (typeof url === "string") {
-            // Replace the first occurrence only with g
-            return url.replace(/tcp:\/\//g, "http://");
-        }
-        return url;
-    }
-
-    /**
-     * Returns HTTPS agent options with client side TLS parameters if certificate files
-     * for the given host are available under a predefined directory path.
-     *
-     * The base path where certificates are looked for can be set with the
-     * 'DOCKER_TLS_DIR_PATH' environmental variable or defaults to 'data/docker-tls/'.
-     *
-     * If a directory in this path exists with a name matching the FQDN of the docker host
-     * (e.g. the FQDN of 'https://example.com:2376' is 'example.com' so the directory
-     * 'data/docker-tls/example.com/' would be searched for certificate files),
-     * then 'ca.pem', 'key.pem' and 'cert.pem' files are included in the agent options.
-     * File names can also be overridden via 'DOCKER_TLS_FILE_NAME_(CA|KEY|CERT)'.
-     * @param {string} dockerType i.e. "tcp" or "socket"
-     * @param {string} url The docker host URL rewritten to https://
-     * @returns {object} HTTP agent options
-     */
-    static getHttpsAgentOptions(dockerType, url) {
-        let baseOptions = {
-            maxCachedSessions: 0,
-            rejectUnauthorized: true
-        };
-        let certOptions = {};
-
-        let dirName = (new URL(url)).hostname;
-
-        let caPath = path.join(Database.dockerTLSDir, dirName, DockerHost.CertificateFileNameCA);
-        let certPath = path.join(Database.dockerTLSDir, dirName, DockerHost.CertificateFileNameCert);
-        let keyPath = path.join(Database.dockerTLSDir, dirName, DockerHost.CertificateFileNameKey);
-
-        if (dockerType === "tcp" && fs.existsSync(caPath) && fs.existsSync(certPath) && fs.existsSync(keyPath)) {
-            let ca = fs.readFileSync(caPath);
-            let key = fs.readFileSync(keyPath);
-            let cert = fs.readFileSync(certPath);
-            certOptions = {
-                ca,
-                key,
-                cert
+        if (kubernetesCluster.connection_type === "local") {
+            kc.loadFromCluster();
+        } else if (kubernetesCluster.connectionType === "remote") {
+/*
+            config = {
+              "apiVersion": 'v1',
+              "kind": 'Config',
+              "clusters": [
+                { 'cluster': { 'server': kubernetesCluster.kubernetesURL }, 'name': kubernetesCluster.name }
+              ],
+              "contexts": [
+                { 'context': { 'user': kubernetesCluster.name, 'cluster': kubernetesCluster.name }, 'name': kubernetesCluster.name }
+              ],
+              "users": [
+                { 'name': kubernetesCluster.name, 'authProvider': { config: { 'access-token': kubernetesCluster.accessToken } } }
+              ],
+              "current-context": kubernetesCluster.name
             };
-        }
+            console.log(config);
+            kc.loadFromString(JSON.stringify(config));
+*/
+            kc.loadFromString(JSON.stringify(yaml.load(kubernetesCluster.kubeConfig)));
 
-        return {
-            ...baseOptions,
-            ...certOptions
-        };
+        }
+        const kbsCoreApi = kc.makeApiClient(k8s.CoreV1Api);
+        let numpods = 0;
+        let ns;
+        if (kubernetesCluster.namespaces.includes(",")) { //is csv
+          ns = kubernetesCluster.namespaces.split(',');
+        } else {
+           const namespaces = await kbsCoreApi.listNamespace();
+           if (kubernetesCluster.namespaces === "") {
+             ns = namespaces.body.items.map(e => e.metadata.name);
+           } else {
+             ns = [];
+             for (let i = 0; i < namespaces.length; i++){
+               if (namespaces[i].match(kubernetesCluster.namespaces)){
+                 ns.push(namespaces[i]);
+               }
+             }
+           }
+        }
+        for (let i = 0; i < ns.length; i++) {
+          const podsRes = await kbsCoreApi.listNamespacedPod(ns[i]);
+          console.log(podsRes.body.items.length);
+          numpods += podsRes.body.items.length;
+        }
+        return numpods;
     }
+
 }
 
 module.exports = {

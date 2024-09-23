@@ -1,3 +1,4 @@
+const yaml = require('js-yaml');
 const { BeanModel } = require("redbean-node/dist/bean-model");
 
 class KubernetesCluster extends BeanModel {
@@ -9,8 +10,10 @@ class KubernetesCluster extends BeanModel {
         return {
             id: this.id,
             userID: this.user_id,
-            kubernetesHost: this.kubernetes_host,
+            kubernetesURL: this.kubernetes_url,
             connectionType: this.connection_type,
+            kubeConfig: yaml.dump(JSON.parse(this.kube_config)),
+            namespaces: this.namespaces,
             name: this.name,
         };
     }

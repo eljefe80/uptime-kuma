@@ -271,6 +271,7 @@ module.exports = {
     sendAPIKeyList,
     sendInfo,
     sendDockerHostList,
+    sendKubernetesClusterList,
     sendRemoteBrowserList,
     sendMonitorTypeList,
 };

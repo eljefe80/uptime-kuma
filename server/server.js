@@ -132,7 +132,7 @@ const twoFAVerifyOptions = {
 const testMode = !!args["test"] || false;
 
 // Must be after io instantiation
-const { sendNotificationList, sendHeartbeatList, sendInfo, sendProxyList, sendDockerHostList, sendDockerHostList,sendAPIKeyList, sendRemoteBrowserList, sendMonitorTypeList } = require("./client");
+const { sendNotificationList, sendHeartbeatList, sendInfo, sendProxyList, sendDockerHostList, sendKubernetesClusterList,sendAPIKeyList, sendRemoteBrowserList, sendMonitorTypeList } = require("./client");
 const { statusPageSocketHandler } = require("./socket-handlers/status-page-socket-handler");
 const { databaseSocketHandler } = require("./socket-handlers/database-socket-handler");
 const { remoteBrowserSocketHandler } = require("./socket-handlers/remote-browser-socket-handler");
@@ -141,6 +141,7 @@ const StatusPage = require("./model/status_page");
 const { cloudflaredSocketHandler, autoStart: cloudflaredAutoStart, stop: cloudflaredStop } = require("./socket-handlers/cloudflared-socket-handler");
 const { proxySocketHandler } = require("./socket-handlers/proxy-socket-handler");
 const { dockerSocketHandler } = require("./socket-handlers/docker-socket-handler");
+const { kubernetesSocketHandler } = require("./socket-handlers/kubernetes-socket-handler");
 const { maintenanceSocketHandler } = require("./socket-handlers/maintenance-socket-handler");
 const { apiKeySocketHandler } = require("./socket-handlers/api-key-socket-handler");
 const { generalSocketHandler } = require("./socket-handlers/general-socket-handler");
@@ -827,6 +828,10 @@ let needSetup = false;
                 bean.pushToken = monitor.pushToken;
                 bean.docker_container = monitor.docker_container;
                 bean.docker_host = monitor.docker_host;
+                bean.kubernetes_type = monitor.kubernetes_type;
+                bean.kubernetes_name_or_label = monitor.kubernetes_name_or_label;
+                bean.kubernetes_namespace = monitor.kubernetes_namespace;
+                bean.kubernetes_cluster = monitor.kubernetes_cluster;
                 bean.proxyId = Number.isInteger(monitor.proxyId) ? monitor.proxyId : null;
                 bean.mqttUsername = monitor.mqttUsername;
                 bean.mqttPassword = monitor.mqttPassword;
@@ -1563,6 +1568,7 @@ let needSetup = false;
         databaseSocketHandler(socket);
         proxySocketHandler(socket);
         dockerSocketHandler(socket);
+        kubernetesSocketHandler(socket);
         maintenanceSocketHandler(socket);
         apiKeySocketHandler(socket);
         remoteBrowserSocketHandler(socket);

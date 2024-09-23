@@ -1,5 +1,7 @@
 const dayjs = require("dayjs");
 const axios = require("axios");
+const k8s = require('@kubernetes/client-node');
+const yaml = require('js-yaml');
 const { Prometheus } = require("../prometheus");
 const { log, UP, DOWN, PENDING, MAINTENANCE, flipStatus, MAX_INTERVAL_SECOND, MIN_INTERVAL_SECOND,
     SQL_DATETIME_FORMAT, evaluateJsonQuery
@@ -133,6 +135,10 @@ class Monitor extends BeanModel {
             dns_last_result: this.dns_last_result,
             docker_container: this.docker_container,
             docker_host: this.docker_host,
+            kubernetes_type: this.kubernetes_type,
+            kubernetes_name_or_label: this.kubernetes_name_or_label,
+            kubernetes_namespace: this.kubernetes_namespace,
+            kubernetes_cluster: this.kubernetes_cluster,
             proxyId: this.proxy_id,
             notificationIDList,
             tags: tags,
@@ -777,13 +783,13 @@ class Monitor extends BeanModel {
                         throw Error("Container State is " + res.data.State.Status);
                     }
                 } else if (this.type === "kubernetes") {
-                    log.debug("monitor", `[${this.name}] Prepare Options for Axios`);
-
+                    log.debug("monitor", `[${this.name}] Prepare Options for Kubernetes`);
+/*
                     const options = {
                         url: `/containers/${this.docker_container}/json`,
                         timeout: this.interval * 1000 * 0.8,
                         headers: {
-                            "Accept": "*/*",
+                            "Accept": "* /*",
                         },
                         httpsAgent: new https.Agent({
                             maxCachedSessions: 0,      // Use Custom agent to disable session reuse (https://github.com/nodejs/node/issues/3940)
@@ -794,36 +800,48 @@ class Monitor extends BeanModel {
                             maxCachedSessions: 0,
                         }),
                     };
-
+*/
                     const kubernetesCluster = await R.load("kubernetes_cluster", this.kubernetes_cluster);
-
+                    const kc = new k8s.KubeConfig();
                     if (!kubernetesCluster) {
                         throw new Error("Failed to load kubernetes cluster config");
                     }
-
-                    if (kubernetesCluster._dockerType === "socket") {
-                        options.socketPath = kubernetesCluster._dockerDaemon;
-                    } else if (kubernetesCluster._dockerType === "tcp") {
-                        options.baseURL = KubernetesCluster.patchDockerURL(kubernetesCluster._dockerDaemon);
-                        options.httpsAgent = new https.Agent(
-                            DockerHost.getHttpsAgentOptions(kubernetesCluster._dockerType, options.baseURL)
-                        );
+                    if (kubernetesCluster.connection_type === "local") {
+                        kc.loadFromCluster();
+                    } else if (kubernetesCluster.connectionType === "remote") {
+                        kc.loadFromString(JSON.stringify(yaml.load(kubernetesCluster.kubeConfig)));
                     }
 
-                    log.debug("monitor", `[${this.name}] Axios Request`);
-                    let res = await axios.request(options);
+                    log.debug("monitor", `[${this.name}] Kubernetes Request`);
+                    let response;
+                    if (this.kubernetes_type == "pod") {
+                       let kbsCoreApi = kc.makeApiClient(k8s.CoreV1Api);
+                       response = await kbsCoreApi.readNamespacedPodStatus(this.kubernetes_name_or_label, this.kubernetes_namespace, false);
+                       console.log('Pod: ', pod.body);
+                    } else if (this.kubernetes_type == "deployment") {
+                       let kbsCoreApi = kc.makeApiClient(k8s.AppsV1Api);
 
-                    if (res.data.State.Running) {
-                        if (res.data.State.Health && res.data.State.Health.Status !== "healthy") {
-                            bean.status = PENDING;
-                            bean.msg = res.data.State.Health.Status;
-                        } else {
-                            bean.status = UP;
-                            bean.msg = res.data.State.Health ? res.data.State.Health.Status : res.data.State.Status;
+                       console.log('Pod: ', this.kubernetes_name_or_label);
+                       response = await kbsCoreApi.readNamespacedDeploymentStatus(this.kubernetes_name_or_label, this.kubernetes_namespace, false);
+                       console.log('Pod: ', response.body.status.conditions);
+                    } else if (this.kubernetes_type == "ingress") {
+                       let kbsCoreApi = kc.makeApiClient(k8s.NetworkingV1Api);
+                       response = await kbsCoreApi.readNamespacedIngressStatus(this.kubernetes_name_or_label, this.kubernetes_namespace, false);
+                    } else if (this.kubernetes_type == "service") {
+                       let kbsCoreApi = kc.makeApiClient(k8s.CoreV1Api);
+                       response = await kbsCoreApi.readNamespacedServiceStatus(this.kubernetes_name_or_label, this.kubernetes_namespace, false);
+                    }
+                    let status = response.body.status.conditions.map(function(condition) { return condition.status === "True" }).every(Boolean);
+                    let msg;
+                    let latest;
+                    for (let i = 0; i < response.body.status.conditions.length; i++) {
+                        if (i === 0 || new Date(response.body.status.conditions[i].lastUpdateTime) > latest) {
+                            msg = response.body.status.conditions[i].message;
+                            latest = new Date(response.body.status.conditions[i].lastUpdateTime);
                         }
-                    } else {
-                        throw Error("Container State is " + res.data.State.Status);
                     }
+                    bean.status = (status === true) ? UP : DOWN;
+                    bean.msg = msg;
                 } else if (this.type === "sqlserver") {
                     let startTime = dayjs().valueOf();
 

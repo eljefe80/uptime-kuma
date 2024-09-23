@@ -42,6 +42,9 @@
                                         <option value="docker">
                                             {{ $t("Docker Container") }}
                                         </option>
+                                        <option value="kubernetes">
+                                            {{ $t("Kubernetes Resource(s)") }}
+                                        </option>
 
                                         <option value="real-browser">
                                             HTTP(s) - Browser Engine (Chrome/Chromium) (Beta)
@@ -385,15 +388,32 @@
                                 </div>
                             </div>
 
+                            <!-- Kubernetes Resource Name / Label -->
+                            <!-- For Kubernetes Type -->
+                            <div v-if="monitor.type === 'kubernetes'" class="my-3">
+                                <label for="kubernetes_name_or_label" class="form-label">{{ $t("Kubernetes Resource Name or Label") }}</label>
+                                <input id="kubernetes_name_or_label" v-model="monitor.kubernetes_name_or_label" type="text" class="form-control" required>
+                            </div>
+
+                            <div v-if="monitor.type === 'kubernetes'" class="my-3">
+                                <label for="kubernetes_type" class="form-label">{{ $t("Kubernetes Type to Monitor") }}</label>
+                                <select id="kubernetes_type" v-model="monitor.kubernetes_type" class="form-select" required>
+                                    <option value="pod">{{ $t("Pod") }}</option>
+                                    <option value="deployment">{{ $t("Deployment") }}</option>
+                                    <option value="service">{{ $t("Service") }}</option>
+                                    <option value="ingress">{{ $t("Ingress") }}</option>
+                                </select>
+                            </div>
+
                             <!-- Kubernetes Cluster -->
                             <!-- For Connection Type -->
                             <div v-if="monitor.type === 'kubernetes'" class="my-3">
                                 <div class="mb-3">
-                                    <label for="kubernetes-cluster" class="form-label">{{ $t("Docker Host") }}</label>
+                                    <label for="kubernetes-cluster" class="form-label">{{ $t("Kubernetes Cluster") }}</label>
                                     <ActionSelect
-                                        id="docker-host"
-                                        v-model="monitor.docker_host"
-                                        :action-aria-label="$t('openModalTo', $t('Setup Docker Host'))"
+                                        id="kubernetes-cluster"
+                                        v-model="monitor.kubernetes_cluster"
+                                        :action-aria-label="$t('openModalTo', $t('Setup Kubernetes Cluster'))"
                                         :options="kubernetesClusterOptionsList"
                                         :disabled="$root.kubernetesClusterList == null || $root.kubernetesClusterList.length === 0"
                                         :icon="'plus'"
@@ -401,6 +421,11 @@
                                         :required="true"
                                     />
                                 </div>
+                            </div>
+
+                            <div v-if="monitor.type === 'kubernetes'" class="my-3">
+                                <label for="kubernetes_namespace" class="form-label">{{ $t("Kubernetes' Resource's Namespace") }}</label>
+                                <input id="kubernetes_namespace" v-model="monitor.kubernetes_namespace" type="text" class="form-control" required>
                             </div>
 
                             <!-- MQTT -->
@@ -1028,6 +1053,7 @@ import ActionSelect from "../components/ActionSelect.vue";
 import CopyableInput from "../components/CopyableInput.vue";
 import CreateGroupDialog from "../components/CreateGroupDialog.vue";
 import NotificationDialog from "../components/NotificationDialog.vue";
+import DockerHostDialog from "../components/DockerHostDialog.vue";
 import KubernetesClusterDialog from "../components/KubernetesClusterDialog.vue";
 import RemoteBrowserDialog from "../components/RemoteBrowserDialog.vue";
 import ProxyDialog from "../components/ProxyDialog.vue";
@@ -1062,6 +1088,10 @@ const monitorDefaults = {
     dns_resolve_server: "1.1.1.1",
     docker_container: "",
     docker_host: null,
+    kubernetes_name_or_label: null,
+    kubernetes_type: null,
+    kubernetes_namespace: null,
+    kubernetes_cluster: null,
     proxyId: null,
     mqttUsername: "",
     mqttPassword: "",
@@ -1355,10 +1385,10 @@ message HealthCheckResponse {
 
         kubernetesClusterOptionsList() {
             if (this.$root.kubernetesClusterList && this.$root.kubernetesClusterList.length > 0) {
-                return this.$root.kubernetesClusterList.map((host) => {
+                return this.$root.kubernetesClusterList.map((cluster) => {
                     return {
-                        label: host.name,
-                        value: host.id
+                        label: cluster.name,
+                        value: cluster.id
                     };
                 });
             } else {
